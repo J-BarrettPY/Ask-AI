@@ -3,15 +3,14 @@ function Ask-AI {
         [string]$arg
     )
 
-    $apiKey = 'YOUR OPENAI API'
-    $apiEndpoint = 'https://api.openai.com/v1/engines/text-davinci-003/completions'
+    $apiKey = 'OPENAI-API'
+    $apiEndpoint = 'https://api.openai.com/v1/chat/completions' 
 
     $headers = @{
         'Authorization' = "Bearer $apiKey"
         'Content-Type'  = 'application/json'
     }
 
-    # Initialize variables
     $ErrorMessage = $null
     $LastUserInput = $null
     $showErrorInfo = $false
@@ -39,7 +38,15 @@ Example:
 `n
 "@
 
-    # Custom logic to process options
+function Create-TextBox {
+    param([string]$Text)
+    $lines = $Text -split "`n"
+    $maxLength = ($lines | Measure-Object -Property Length -Maximum).Maximum
+
+    $border = "-" * $maxLength
+    "$border`n$Text`n$border"
+}
+
     if ($arg -eq "/s") {
         $showErrorInfo = $true
     } elseif ($arg -eq "/d") {
@@ -49,57 +56,53 @@ Example:
         $detailed = $true
     } elseif ($arg -eq "/i") {
         $userInputMode = $true
-    } elseif ($arg -eq "/help" -or $arg -eq "/?" -or $arg -eq "?") {
+    } elseif ($arg -eq "/help" -or $arg -eq "/?" -or $arg -eq "-help" -or $arg -eq "help" -or $arg -eq "?") {
         $help
         return
     }
 
-    # Handle user input mode
     if ($userInputMode) {
         Write-Host "User Input:" -ForegroundColor Yellow
         $prompt = Read-Host
 
         $maxTokens = 80
     } else {
-        # Check for the most recent error message
         if ($Error.Count -gt 0) {
-            $ErrorMessage = $Error[0].Exception.ToString()
+            $ErrorMessage = $Error[0].Exception.Message
             $LastUserInput = $Error[0].InvocationInfo.Line
-
+    
             if ($showErrorInfo) {
-                Write-Host -ForegroundColor Yellow "`nError message: $ErrorMessage"
-                Write-Host -ForegroundColor Yellow "Last command: $LastUserInput"
+                Write-Host -ForegroundColor Yellow "`nPowerShell Error: $ErrorMessage"
+                Write-Host -ForegroundColor Yellow "`nLast user command: $LastUserInput"
             }
         } else {
             $LastUserInput = Read-Host
         }
-
-        $prompt = "Windows PowerShell error: $($ErrorMessage)`n`nLast Command: $($LastUserInput)`n`nProvide the correct command or syntax using less than 10 words."
+    
+        $prompt = "User tried this command: $($LastUserInput) and got this PowerShell Error: $($ErrorMessage)`nIf the term is not recognized, provide the right command or syntax using less than 10 words. If the error is something else, explain the error in less than 20 words.. Do NOT add additional context."
         $maxTokens = 80
-
+    
         if ($detailed) {
-            $prompt = "Windows PowerShell error: $($ErrorMessage)`n`nLast Command: $($LastUserInput)`n`nPlease provide a detailed explanation of the error and a solution with the correct command or syntax, using up to 80 words."
+            $prompt = "User tried this command: $($LastUserInput) and got this PowerShell Error: $($ErrorMessage)`nProvide a detailed explanation of the error and a solution with the correct command or syntax, using up to 80 words."
             $maxTokens = 250
         }
     }
-
     $body = @{
-        'prompt'              = $prompt
-        'temperature'         = 1
-        'max_tokens'          = $maxTokens
-        'top_p'               = 1
-        'frequency_penalty'   = 0
-        'presence_penalty'    = 0
+        'model'    = "gpt-3.5-turbo"
+        'messages' = @(
+            @{
+                'role'    = "system"
+                'content' = "PowerShell Terminal"
+            },
+            @{
+                'role'    = "user"
+                'content' = $prompt
+            }
+        )
     } | ConvertTo-Json
 
     $response = Invoke-RestMethod -Uri $apiEndpoint -Method 'POST' -Headers $headers -Body $body
 
-    Write-Host $response.choices[0].text -ForegroundColor Green "`n"
+    $formattedResponse = Create-TextBox -Text $response.choices[0].message.content
+    Write-Host $formattedResponse -ForegroundColor Green "`n"
 }
-
-# Example of how to call the function
-# Ask-AI /s
-# Ask-AI /d
-# Ask-AI /a
-# Ask-AI /i
-# Ask-AI /?
